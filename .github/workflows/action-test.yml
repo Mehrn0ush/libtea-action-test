@@ -1,0 +1,81 @@
+name: Exercise the libtea Action
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  runners:
+    name: ${{ matrix.os }} ${{ matrix.libc }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-24.04, libc: gnu }
+          - { os: ubuntu-24.04, libc: musl }
+          - { os: ubuntu-24.04-arm, libc: gnu }
+          - { os: macos-15, libc: gnu }
+          - { os: windows-2022, libc: gnu }
+    steps:
+      - name: Run libtea parse-tei
+        id: libtea
+        uses: Mehrn0ush/libtea-rs@1a3538f8e0ff8e6c7f74f2edd623b31e98ccc248
+        with:
+          version: "0.1.1"
+          command: parse-tei
+          tei: tei://example.com/uuid/2ff3ae7c-8eab-4e0b-9b8b-1a0c4c4c1c2d
+          libc: ${{ matrix.libc }}
+          attestation: required
+      - name: Check the outputs
+        shell: bash
+        run: |
+          echo "exit-code=${{ steps.libtea.outputs.exit-code }}"
+          echo "attestation=${{ steps.libtea.outputs.attestation }}"
+          test "${{ steps.libtea.outputs.exit-code }}" = "0"
+          test "${{ steps.libtea.outputs.attestation }}" = "verified"
+      - name: Run again, to use the cache
+        uses: Mehrn0ush/libtea-rs@1a3538f8e0ff8e6c7f74f2edd623b31e98ccc248
+        with:
+          version: "0.1.1"
+          command: parse-tei
+          tei: tei://example.com/uuid/2ff3ae7c-8eab-4e0b-9b8b-1a0c4c4c1c2d
+          libc: ${{ matrix.libc }}
+          attestation: required
+
+  alpine:
+    name: alpine container (musl)
+    runs-on: ubuntu-24.04
+    container: alpine:3.20
+    steps:
+      - name: Tools the action needs
+        run: apk add --no-cache bash curl tar
+      - name: Run libtea parse-tei
+        uses: Mehrn0ush/libtea-rs@1a3538f8e0ff8e6c7f74f2edd623b31e98ccc248
+        with:
+          version: "0.1.1"
+          command: parse-tei
+          tei: tei://example.com/uuid/2ff3ae7c-8eab-4e0b-9b8b-1a0c4c4c1c2d
+          libc: musl
+          attestation: skip
+          cache: "false"
+
+  refuses-ambient-credentials:
+    name: refuses a secret in env
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Must fail
+        id: refuse
+        continue-on-error: true
+        uses: Mehrn0ush/libtea-rs@1a3538f8e0ff8e6c7f74f2edd623b31e98ccc248
+        env:
+          TEA_API_KEY_ID: not-a-real-key
+        with:
+          version: "0.1.1"
+          command: parse-tei
+          tei: tei://example.com/uuid/2ff3ae7c-8eab-4e0b-9b8b-1a0c4c4c1c2d
+      - name: The action must have failed
+        if: steps.refuse.outcome != 'failure'
+        run: echo "the action ran with TEA_API_KEY_ID set" && exit 1
