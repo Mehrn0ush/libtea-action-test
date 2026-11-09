@@ -22,7 +22,7 @@ jobs:
     steps:
       - name: Run libtea parse-tei
         id: libtea
-        uses: Mehrn0ush/libtea-rs@1a3538f8e0ff8e6c7f74f2edd623b31e98ccc248
+        uses: Mehrn0ush/libtea-rs@aa4a191636da7852ab1862319f17ca031dc62192
         with:
           version: "0.1.1"
           command: parse-tei
@@ -37,7 +37,7 @@ jobs:
           test "${{ steps.libtea.outputs.exit-code }}" = "0"
           test "${{ steps.libtea.outputs.attestation }}" = "verified"
       - name: Run again, to use the cache
-        uses: Mehrn0ush/libtea-rs@1a3538f8e0ff8e6c7f74f2edd623b31e98ccc248
+        uses: Mehrn0ush/libtea-rs@aa4a191636da7852ab1862319f17ca031dc62192
         with:
           version: "0.1.1"
           command: parse-tei
@@ -51,9 +51,9 @@ jobs:
     container: alpine:3.20
     steps:
       - name: Tools the action needs
-        run: apk add --no-cache bash curl tar
+        run: apk add --no-cache bash curl tar python3 python3
       - name: Run libtea parse-tei
-        uses: Mehrn0ush/libtea-rs@1a3538f8e0ff8e6c7f74f2edd623b31e98ccc248
+        uses: Mehrn0ush/libtea-rs@aa4a191636da7852ab1862319f17ca031dc62192
         with:
           version: "0.1.1"
           command: parse-tei
@@ -69,7 +69,7 @@ jobs:
       - name: Must fail
         id: refuse
         continue-on-error: true
-        uses: Mehrn0ush/libtea-rs@1a3538f8e0ff8e6c7f74f2edd623b31e98ccc248
+        uses: Mehrn0ush/libtea-rs@aa4a191636da7852ab1862319f17ca031dc62192
         env:
           TEA_API_KEY_ID: not-a-real-key
         with:
