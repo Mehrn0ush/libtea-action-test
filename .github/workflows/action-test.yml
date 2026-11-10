@@ -22,9 +22,9 @@ jobs:
     steps:
       - name: Run libtea parse-tei
         id: libtea
-        uses: Mehrn0ush/libtea-rs@aa4a191636da7852ab1862319f17ca031dc62192
+        uses: Mehrn0ush/libtea-rs@9c77bed5585c300f7e84984cb49fba1937cc9d55
         with:
-          version: "0.1.1"
+          version: "0.1.2"
           command: parse-tei
           tei: tei://example.com/uuid/2ff3ae7c-8eab-4e0b-9b8b-1a0c4c4c1c2d
           libc: ${{ matrix.libc }}
@@ -37,9 +37,9 @@ jobs:
           test "${{ steps.libtea.outputs.exit-code }}" = "0"
           test "${{ steps.libtea.outputs.attestation }}" = "verified"
       - name: Run again, to use the cache
-        uses: Mehrn0ush/libtea-rs@aa4a191636da7852ab1862319f17ca031dc62192
+        uses: Mehrn0ush/libtea-rs@9c77bed5585c300f7e84984cb49fba1937cc9d55
         with:
-          version: "0.1.1"
+          version: "0.1.2"
           command: parse-tei
           tei: tei://example.com/uuid/2ff3ae7c-8eab-4e0b-9b8b-1a0c4c4c1c2d
           libc: ${{ matrix.libc }}
@@ -53,9 +53,9 @@ jobs:
       - name: Tools the action needs
         run: apk add --no-cache bash curl tar python3 python3
       - name: Run libtea parse-tei
-        uses: Mehrn0ush/libtea-rs@aa4a191636da7852ab1862319f17ca031dc62192
+        uses: Mehrn0ush/libtea-rs@9c77bed5585c300f7e84984cb49fba1937cc9d55
         with:
-          version: "0.1.1"
+          version: "0.1.2"
           command: parse-tei
           tei: tei://example.com/uuid/2ff3ae7c-8eab-4e0b-9b8b-1a0c4c4c1c2d
           libc: musl
@@ -69,11 +69,11 @@ jobs:
       - name: Must fail
         id: refuse
         continue-on-error: true
-        uses: Mehrn0ush/libtea-rs@aa4a191636da7852ab1862319f17ca031dc62192
+        uses: Mehrn0ush/libtea-rs@9c77bed5585c300f7e84984cb49fba1937cc9d55
         env:
           TEA_API_KEY_ID: not-a-real-key
         with:
-          version: "0.1.1"
+          version: "0.1.2"
           command: parse-tei
           tei: tei://example.com/uuid/2ff3ae7c-8eab-4e0b-9b8b-1a0c4c4c1c2d
       - name: The action must have failed
