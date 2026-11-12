@@ -1,0 +1,118 @@
+name: Exercise the libtea Action over the network
+
+# Read-only calls to the public Vulnetix TEA server, the same inputs as
+# libtea-rs/.github/workflows/interop-manual.yml and docs/interoperability.md.
+# The server needs no credentials for these calls.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TEI: tei://vulnetix.com/uuid/71286087-babf-5795-a6ce-4c350bc944b4
+  BASE: https://www.vulnetix.com/tea
+  PRODUCT_RELEASE: 71286087-babf-5795-a6ce-4c350bc944b4
+
+jobs:
+  network:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2022]
+    steps:
+      - name: discover
+        uses: Mehrn0ush/libtea-rs@e5b19d364f3c2a409c8ffc2fb16e696c180ef892 # v0.1.5
+        with:
+          version: "0.1.5"
+          command: discover
+          tei: ${{ env.TEI }}
+          attestation: required
+      - name: product-release
+        uses: Mehrn0ush/libtea-rs@e5b19d364f3c2a409c8ffc2fb16e696c180ef892 # v0.1.5
+        with:
+          version: "0.1.5"
+          command: product-release
+          base-url: ${{ env.BASE }}
+          extra-args: |
+            --uuid
+            ${{ env.PRODUCT_RELEASE }}
+          attestation: required
+      - name: sync (write the lock)
+        uses: Mehrn0ush/libtea-rs@e5b19d364f3c2a409c8ffc2fb16e696c180ef892 # v0.1.5
+        with:
+          version: "0.1.5"
+          command: sync
+          tei: ${{ env.TEI }}
+          lock-file: tea.lock
+          extra-args: |
+            --product-release
+            ${{ env.PRODUCT_RELEASE }}
+          attestation: required
+      - name: The lock was written
+        shell: bash
+        run: test -s tea.lock && head -c 400 tea.lock && echo
+      - name: sync --check (compare with the lock)
+        id: check
+        uses: Mehrn0ush/libtea-rs@e5b19d364f3c2a409c8ffc2fb16e696c180ef892 # v0.1.5
+        with:
+          version: "0.1.5"
+          command: sync
+          tei: ${{ env.TEI }}
+          lock-file: tea.lock
+          check: "true"
+          extra-args: |
+            --product-release
+            ${{ env.PRODUCT_RELEASE }}
+          attestation: required
+      - name: sync --check reported no difference
+        shell: bash
+        run: test "${{ steps.check.outputs.exit-code }}" = "0"
+
+  credentials:
+    name: credential inputs reach only the last step
+    runs-on: ubuntu-24.04
+    steps:
+      # Offline command: this checks the plumbing, not a token exchange. The two
+      # secrets hold dummy values; afterwards, grep the run log for the raw
+      # values (see the README): they must not appear anywhere.
+      - name: spec with api-key inputs
+        uses: Mehrn0ush/libtea-rs@e5b19d364f3c2a409c8ffc2fb16e696c180ef892 # v0.1.5
+        with:
+          version: "0.1.5"
+          command: spec
+          api-key-id: ${{ secrets.DUMMY_TEA_KEY_ID }}
+          api-key-secret: ${{ secrets.DUMMY_TEA_KEY_SECRET }}
+
+  # A second public TEA 1.0.0 server, found in the README of
+  # oolong-project/tea-client-go (its live test uses this demo). Read-only.
+  rearm-demo:
+    name: ReARM demo (second server)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: discover
+        uses: Mehrn0ush/libtea-rs@e5b19d364f3c2a409c8ffc2fb16e696c180ef892 # v0.1.5
+        with:
+          version: "0.1.5"
+          command: discover
+          tei: tei://demo.rearmhq.com/uuid/b9f115fb-6688-4a3f-a262-3acc04e1fc9e
+          extra-args: |
+            --json
+          attestation: required
+      - name: sync (write a lock)
+        uses: Mehrn0ush/libtea-rs@e5b19d364f3c2a409c8ffc2fb16e696c180ef892 # v0.1.5
+        with:
+          version: "0.1.5"
+          command: sync
+          tei: tei://demo.rearmhq.com/uuid/b9f115fb-6688-4a3f-a262-3acc04e1fc9e
+          lock-file: rearm.lock
+          extra-args: |
+            --json
+          attestation: required
+      - name: Show the lock
+        if: always()
+        shell: bash
+        run: test -f rearm.lock && cat rearm.lock || echo "no lock written"
