@@ -49,15 +49,16 @@ jobs:
       - name: Probe
         shell: bash
         run: |
-          set -uo pipefail
+          # GitHub runs bash steps with -e; a probe must outlive a failing command.
+          set +e -uo pipefail
           mkdir -p "$OUT"
           printf 'step\texit\n' >"$OUT/exit-codes.tsv"
           # probe NAME ARGS...: run libtea, keep its output, record the exit code.
           probe() {
             local name=$1
             shift
-            libtea "$@" >"$OUT/$name.out" 2>"$OUT/$name.err"
-            local status=$?
+            local status=0
+            libtea "$@" >"$OUT/$name.out" 2>"$OUT/$name.err" || status=$?
             printf '%s\t%s\n' "$name" "$status" >>"$OUT/exit-codes.tsv"
             printf '::group::%s (exit %s): libtea %s\n' "$name" "$status" "$*"
             cat "$OUT/$name.out" "$OUT/$name.err"
