@@ -1,0 +1,123 @@
+name: Probe the 0.1.8 commands over the network
+
+# Read-only, anonymous calls to two public TEA 1.0.0 servers with the commands
+# added in 0.1.8: inspect, search, discover --purl and cle. The Action (v0.1.8)
+# installs and verifies the release binary and puts it on PATH; the commands
+# then run directly, because the Action does not accept them as `command`.
+#
+# This is a probe, not a test: what a server does not implement is recorded,
+# not failed. Every command's exit code, stdout and stderr go to the job
+# summary and the uploaded artifact. The job fails only on exit 2 (usage),
+# which means this workflow passed a bad argument.
+
+on:
+  workflow_dispatch:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: ${{ matrix.server.name }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2022]
+        server:
+          - name: vulnetix
+            tei: tei://vulnetix.com/uuid/71286087-babf-5795-a6ce-4c350bc944b4
+            base: https://www.vulnetix.com/tea
+          - name: rearm
+            tei: tei://demo.rearmhq.com/uuid/b9f115fb-6688-4a3f-a262-3acc04e1fc9e
+            base: https://demo.rearmhq.com/tea
+    env:
+      TEI: ${{ matrix.server.tei }}
+      BASE: ${{ matrix.server.base }}
+      SERVER: ${{ matrix.server.name }}
+      RUNNER: ${{ matrix.os }}
+      OUT: results/${{ matrix.server.name }}-${{ matrix.os }}
+    steps:
+      - name: Install and verify libtea 0.1.8 (runs spec)
+        uses: Mehrn0ush/libtea-rs@fce7a0150f9dd4f6eaeba28727651776e132258d # v0.1.8
+        with:
+          version: "0.1.8"
+          command: spec
+          attestation: required
+
+      - name: Probe
+        shell: bash
+        run: |
+          set -uo pipefail
+          mkdir -p "$OUT"
+          printf 'step\texit\n' >"$OUT/exit-codes.tsv"
+          # probe NAME ARGS...: run libtea, keep its output, record the exit code.
+          probe() {
+            local name=$1
+            shift
+            libtea "$@" >"$OUT/$name.out" 2>"$OUT/$name.err"
+            local status=$?
+            printf '%s\t%s\n' "$name" "$status" >>"$OUT/exit-codes.tsv"
+            printf '::group::%s (exit %s): libtea %s\n' "$name" "$status" "$*"
+            cat "$OUT/$name.out" "$OUT/$name.err"
+            printf '::endgroup::\n'
+            return 0
+          }
+
+          libtea --version
+
+          probe inspect inspect "$TEI" --json
+          probe inspect-text inspect "$TEI"
+
+          product=$(jq -r '.product.uuid // empty' "$OUT/inspect.out" 2>/dev/null)
+          release=$(jq -r '.product_release.uuid // empty' "$OUT/inspect.out" 2>/dev/null)
+          version=$(jq -r '.product_release.version // empty' "$OUT/inspect.out" 2>/dev/null)
+          component=$(jq -r '.product_release.components[0].uuid // empty' "$OUT/inspect.out" 2>/dev/null)
+          component_release=$(jq -r '.product_release.components[0].release // empty' "$OUT/inspect.out" 2>/dev/null)
+          purl=$(jq -r '[.product.identifiers[] | select(.type == "PURL") | .value][0] // empty' "$OUT/inspect.out" 2>/dev/null)
+          {
+            printf 'product=%s\nrelease=%s\nversion=%s\n' "$product" "$release" "$version"
+            printf 'component=%s\ncomponent_release=%s\npurl=%s\n' "$component" "$component_release" "$purl"
+          } | tee "$OUT/subjects.txt"
+
+          probe search-products search products --base "$BASE" --page-size 2 --json
+          probe search-product-releases search product-releases --base "$BASE" --page-size 2 --json
+          probe search-components search components --base "$BASE" --page-size 2 --json
+          probe search-component-releases search component-releases --base "$BASE" --page-size 2 --json
+          probe search-products-tei search products --base "$BASE" --id-type TEI --id-value "$TEI" --json
+          probe search-product-releases-tei search product-releases --base "$BASE" --id-type TEI --id-value "$TEI" --json
+
+          if [[ -n "$purl" ]]; then
+            probe search-products-purl search products --base "$BASE" --id-type PURL --id-value "$purl" --json
+            probe discover-purl discover --purl "$purl" --base "$BASE" --json
+          else
+            printf 'no PURL identifier on the product: search by PURL and discover --purl skipped\n' | tee "$OUT/purl-skipped.txt"
+          fi
+
+          [[ -z "$product" ]] || probe cle-product cle --base "$BASE" --product "$product" --json
+          [[ -z "$release" ]] || probe cle-product-release cle --base "$BASE" --product-release "$release" --json
+          [[ -z "$component" ]] || probe cle-component cle --base "$BASE" --component "$component" --json
+          [[ -z "$component_release" ]] || probe cle-component-release cle --base "$BASE" --component-release "$component_release" --json
+          if [[ -n "$product" && "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+            probe cle-product-version cle --base "$BASE" --product "$product" --version "$version" --json
+          fi
+
+          {
+            printf '### %s on %s\n\n```\n' "$SERVER" "$RUNNER"
+            cat "$OUT/subjects.txt" "$OUT/exit-codes.tsv"
+            printf '```\n'
+          } >>"$GITHUB_STEP_SUMMARY"
+
+          if awk -F'\t' 'NR > 1 && $2 == 2 { bad = 1 } END { exit !bad }' "$OUT/exit-codes.tsv"; then
+            echo "::error::a command exited 2 (usage): this workflow passed a bad argument"
+            exit 1
+          fi
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: results-${{ matrix.server.name }}-${{ matrix.os }}
+          path: results/
+          retention-days: 30
