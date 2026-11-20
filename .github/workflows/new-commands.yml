@@ -95,6 +95,13 @@ jobs:
           else
             printf 'no PURL identifier on the product: search by PURL and discover --purl skipped\n' | tee "$OUT/purl-skipped.txt"
           fi
+          # The release's own PURL usually carries a version; the product's does not.
+          release_purl=$(jq -r '[.results[0].identifiers[] | select(.idType == "PURL") | .idValue][0] // empty' "$OUT/search-product-releases-tei.out" 2>/dev/null)
+          printf 'release_purl=%s\n' "$release_purl" | tee -a "$OUT/subjects.txt"
+          if [[ -n "$release_purl" ]]; then
+            probe search-product-releases-purl search product-releases --base "$BASE" --id-type PURL --id-value "$release_purl" --json
+            probe discover-release-purl discover --purl "$release_purl" --base "$BASE" --json
+          fi
 
           [[ -z "$product" ]] || probe cle-product cle --base "$BASE" --product "$product" --json
           [[ -z "$release" ]] || probe cle-product-release cle --base "$BASE" --product-release "$release" --json
